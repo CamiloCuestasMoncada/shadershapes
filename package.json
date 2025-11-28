@@ -1,0 +1,53 @@
+{
+    "name": "p5.shadershapes",
+    "version": "1.0.0",
+    "type": "module",
+    "description": "Beautiful fluid shaders for p5.js without WebGL knowledge",
+    "main": "dist/p5.shadershapes.js",
+    "module": "dist/p5.shadershapes.esm.js",
+    "types": "dist/index.d.ts",
+    "files": [
+      "dist/",
+      "presets/",
+      "README.md",
+      "LICENSE"
+    ],
+    "scripts": {
+      "build": "rollup -c",
+      "dev": "rollup -c -w",
+      "prepublishOnly": "npm run build"
+    },
+    "keywords": [
+      "p5js",
+      "p5",
+      "shader",
+      "webgl",
+      "glsl",
+      "creative-coding",
+      "generative-art",
+      "fluid",
+      "procedural"
+    ],
+    "author": "Camilo Cuestas Moncada <multimedialescm@gmail.com>",
+    "license": "MIT",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/CamiloCuestasMoncada/shadershapes"
+    },
+    "bugs": {
+      "url": "https://github.com/CamiloCuestasMoncada/shadershapes/issues"
+    },
+    "homepage": "CamiloCuestasMoncada/shadershapes#readme",
+    "peerDependencies": {
+      "p5": "^1.4.0"
+    },
+    "dependencies": {
+      "earcut": "^2.2.4"
+    },
+    "devDependencies": {
+      "@rollup/plugin-commonjs": "^25.0.7",
+      "@rollup/plugin-node-resolve": "^15.2.3",
+      "@rollup/plugin-terser": "^0.4.4",
+      "rollup": "^4.53.3"
+    }
+  }
