@@ -3,18 +3,14 @@ import { compileProgram, registerPreset } from "./shaderCompiler.js";
 import { setUniforms, validateUniforms } from "./uniforms.js";
 import { BUILTIN_PRESETS } from "./presets/builtin.js";
 
-/**
- * Hook de inicialización - Crea estado por-instancia
- */
 function initShaderShapes() {
   this._shaderShapes = {
-    shapes: [], // Shapes creadas (stateful)
-    gl: null, // Contexto WebGL
-    programCache: {}, // Caché de programas compilados
-    presets: new Map(), // Registro de shader presets
+    shapes: [],
+    gl: null,
+    programCache: {},
+    presets: new Map(),
   };
 
-  // Registrar presets built-in
   Object.entries(BUILTIN_PRESETS).forEach(([name, preset]) => {
     this._shaderShapes.presets.set(name, preset);
   });
@@ -35,7 +31,6 @@ function createShaderShape(type, coords, options = {}) {
     return null;
   }
 
-  // Obtener contexto WebGL si no está disponible
   if (!this._shaderShapes.gl) {
     this._shaderShapes.gl = this._renderer.GL;
 
@@ -48,14 +43,11 @@ function createShaderShape(type, coords, options = {}) {
 
   const gl = this._shaderShapes.gl;
 
-  // Validar uniforms (solo warnings, no bloquea)
   validateUniforms(options, type, this._shaderShapes);
 
-  // Preparar geometría
   const geometry = prepareShape(coords, this.width, this.height, options);
   const buffer = createGeometryBuffer(gl, geometry.vertices);
 
-  // Crear shape object
   const shape = {
     id: `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     type,
@@ -81,7 +73,6 @@ function drawShaderShapes(time) {
   const t = time !== undefined ? time : this.millis() * 0.001;
 
   for (const shape of this._shaderShapes.shapes) {
-    // Obtener/compilar programa
     const program = compileProgram(gl, shape.type, this._shaderShapes);
     if (!program) {
       console.warn(`Shader preset "${shape.type}" not found`);
@@ -90,7 +81,6 @@ function drawShaderShapes(time) {
 
     gl.useProgram(program);
 
-    // Bindear geometría
     gl.bindBuffer(gl.ARRAY_BUFFER, shape.buffer);
 
     const aPos = gl.getAttribLocation(program, "a_position");
@@ -101,17 +91,12 @@ function drawShaderShapes(time) {
     gl.vertexAttribPointer(aUv, 2, gl.FLOAT, false, 16, 8);
     gl.enableVertexAttribArray(aUv);
 
-    // Aplicar uniforms
     setUniforms(gl, program, shape.type, shape.options, t, this._shaderShapes);
 
-    // Dibujar
     gl.drawArrays(gl.TRIANGLES, 0, shape.geometry.count);
   }
 }
 
-/**
- * Dibuja una shape específica por su ID
- */
 function drawShaderShape(id, time) {
   if (!this._shaderShapes || !this._shaderShapes.gl) return;
 
@@ -142,16 +127,12 @@ function drawShaderShape(id, time) {
   gl.drawArrays(gl.TRIANGLES, 0, shape.geometry.count);
 }
 
-/**
- * Elimina una shape específica
- */
 function removeShaderShape(id) {
   if (!this._shaderShapes) return false;
 
   const index = this._shaderShapes.shapes.findIndex((s) => s.id === id);
   if (index === -1) return false;
 
-  // Liberar buffer de WebGL
   const shape = this._shaderShapes.shapes[index];
   this._shaderShapes.gl.deleteBuffer(shape.buffer);
 
@@ -159,13 +140,9 @@ function removeShaderShape(id) {
   return true;
 }
 
-/**
- * Limpia todas las shapes
- */
 function clearShaderShapes() {
   if (!this._shaderShapes) return;
 
-  // Liberar buffers
   const gl = this._shaderShapes.gl;
   this._shaderShapes.shapes.forEach((shape) => {
     gl.deleteBuffer(shape.buffer);
@@ -174,9 +151,6 @@ function clearShaderShapes() {
   this._shaderShapes.shapes = [];
 }
 
-/**
- * Registra un preset custom
- */
 function registerShaderPreset(name, definition) {
   if (!this._shaderShapes) {
     console.error("ShaderShapes not initialized");
@@ -186,15 +160,114 @@ function registerShaderPreset(name, definition) {
   return registerPreset(name, definition, this._shaderShapes);
 }
 
-/**
- * Lista todos los presets disponibles
- */
 function listShaderPresets() {
   if (!this._shaderShapes) return [];
   return Array.from(this._shaderShapes.presets.keys());
 }
 
-// Registrar métodos en p5.prototype
+/**
+ * Carga un preset dinámicamente desde un archivo externo
+ * @param {string} name - Nombre del preset (sin extensión)
+ * @param {string} path - Ruta opcional (default: 'presets/')
+ * @returns {Promise} Resuelve cuando el preset está cargado
+ */
+function loadShaderPreset(name, path) {
+  if (!this._shaderShapes) {
+    console.error("ShaderShapes not initialized");
+    return Promise.reject(new Error("ShaderShapes not initialized"));
+  }
+
+  let basePath;
+
+  if (path !== undefined) {
+    basePath = path;
+  } else {
+    const currentPath = window.location.pathname;
+
+    const segments = currentPath
+      .split("/")
+      .filter((s) => s && s !== "index.html");
+    const levelsUp = segments.length;
+
+    if (levelsUp === 0) {
+      basePath = "node_modules/p5.shadershapes/dist/presets/";
+    } else {
+      basePath = "../".repeat(levelsUp) + "dist/presets/";
+    }
+  }
+
+  const fullPath = `${basePath}${name}.js`;
+
+  console.log(`📦 Loading shader preset "${name}"`);
+  console.log(`   Current path: ${window.location.pathname}`);
+  console.log(`   Calculated base: ${basePath}`);
+  console.log(`   Full path: ${fullPath}`);
+
+  return fetch(fullPath)
+    .then((response) => {
+      if (!response.ok) {
+        if (basePath === "node_modules/p5.shadershapes/dist/presets/") {
+          const altPath = `dist/presets/${name}.js`;
+          console.log(`   Trying alternative path: ${altPath}`);
+          return fetch(altPath).then((altResponse) => {
+            if (!altResponse.ok) {
+              throw new Error(
+                `Failed to load preset "${name}" from both:\n` +
+                  `  - ${fullPath} (${response.statusText})\n` +
+                  `  - ${altPath} (${altResponse.statusText})`
+              );
+            }
+            return altResponse;
+          });
+        }
+
+        throw new Error(
+          `Failed to load preset "${name}": ${response.statusText} (tried: ${fullPath})`
+        );
+      }
+      return response;
+    })
+    .then((response) => response.text())
+    .then((code) => {
+      const blob = new Blob([code], { type: "application/javascript" });
+      const url = URL.createObjectURL(blob);
+
+      return import(url).then((module) => {
+        URL.revokeObjectURL(url);
+
+        const preset = module.default;
+
+        if (!preset || !preset.fragment) {
+          throw new Error(`Invalid preset "${name}": missing fragment shader`);
+        }
+
+        this._shaderShapes.presets.set(name, {
+          vertex: preset.vertex || null,
+          fragment: preset.fragment,
+          uniforms: preset.uniforms || {},
+          metadata: preset.metadata || {},
+        });
+
+        console.log(`✅ Preset "${name}" loaded successfully`);
+
+        if (this._decrementPreload) {
+          this._decrementPreload();
+        }
+
+        return preset;
+      });
+    })
+    .catch((error) => {
+      console.error(`❌ Error loading preset "${name}":`, error);
+
+      if (this._decrementPreload) {
+        this._decrementPreload();
+      }
+
+      throw error;
+    });
+}
+
 if (typeof p5 !== "undefined") {
   p5.prototype.registerMethod("init", initShaderShapes);
   p5.prototype.createShaderShape = createShaderShape;
@@ -204,4 +277,7 @@ if (typeof p5 !== "undefined") {
   p5.prototype.clearShaderShapes = clearShaderShapes;
   p5.prototype.registerShaderPreset = registerShaderPreset;
   p5.prototype.listShaderPresets = listShaderPresets;
+
+  p5.prototype.loadShaderPreset = loadShaderPreset;
+  p5.prototype.registerPreloadMethod("loadShaderPreset", p5.prototype);
 }
