@@ -35,9 +35,11 @@ const config = [
     plugins: [
       resolve(),
       commonjs(),
-      // ⭐ Copiar presets externos a dist/
       copy({
-        targets: [{ src: "presets/*", dest: "dist/presets" }],
+        targets: [
+          { src: "presets/*", dest: "dist/presets" },
+          { src: "textures/*", dest: "dist/textures" },
+        ],
         verbose: true,
       }),
     ],
