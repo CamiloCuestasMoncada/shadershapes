@@ -34,7 +34,6 @@ function createShaderShape(type, coords, options = {}) {
   if (!this._shaderShapes.gl) {
     this._shaderShapes.gl = this._renderer.GL;
 
-    // Configurar WebGL
     const gl = this._shaderShapes.gl;
     gl.disable(gl.DEPTH_TEST);
     gl.enable(gl.BLEND);
@@ -165,11 +164,13 @@ function listShaderPresets() {
   return Array.from(this._shaderShapes.presets.keys());
 }
 
+function getTexturePath(basePath) {
+  return basePath.replace("presets/", "textures/");
+}
+
 /**
  * Carga un preset dinámicamente desde un archivo externo
- * @param {string} name - Nombre del preset (sin extensión)
- * @param {string} path - Ruta opcional (default: 'presets/')
- * @returns {Promise} Resuelve cuando el preset está cargado
+ * Soporta carga automática de imágenes definidas en 'textures'
  */
 function loadShaderPreset(name, path) {
   if (!this._shaderShapes) {
@@ -183,7 +184,6 @@ function loadShaderPreset(name, path) {
     basePath = path;
   } else {
     const currentPath = window.location.pathname;
-
     const segments = currentPath
       .split("/")
       .filter((s) => s && s !== "index.html");
@@ -199,31 +199,19 @@ function loadShaderPreset(name, path) {
   const fullPath = `${basePath}${name}.js`;
 
   console.log(`📦 Loading shader preset "${name}"`);
-  console.log(`   Current path: ${window.location.pathname}`);
-  console.log(`   Calculated base: ${basePath}`);
-  console.log(`   Full path: ${fullPath}`);
 
   return fetch(fullPath)
     .then((response) => {
       if (!response.ok) {
         if (basePath === "node_modules/p5.shadershapes/dist/presets/") {
           const altPath = `dist/presets/${name}.js`;
-          console.log(`   Trying alternative path: ${altPath}`);
           return fetch(altPath).then((altResponse) => {
-            if (!altResponse.ok) {
-              throw new Error(
-                `Failed to load preset "${name}" from both:\n` +
-                  `  - ${fullPath} (${response.statusText})\n` +
-                  `  - ${altPath} (${altResponse.statusText})`
-              );
-            }
+            if (!altResponse.ok) throw new Error("Preset not found");
+            basePath = "dist/presets/";
             return altResponse;
           });
         }
-
-        throw new Error(
-          `Failed to load preset "${name}": ${response.statusText} (tried: ${fullPath})`
-        );
+        throw new Error(`Failed to load preset: ${response.statusText}`);
       }
       return response;
     })
@@ -234,36 +222,62 @@ function loadShaderPreset(name, path) {
 
       return import(url).then((module) => {
         URL.revokeObjectURL(url);
-
         const preset = module.default;
 
         if (!preset || !preset.fragment) {
           throw new Error(`Invalid preset "${name}": missing fragment shader`);
         }
 
-        this._shaderShapes.presets.set(name, {
-          vertex: preset.vertex || null,
-          fragment: preset.fragment,
-          uniforms: preset.uniforms || {},
-          metadata: preset.metadata || {},
-        });
+        const texturePromises = [];
+        const loadedTextures = {};
 
-        console.log(`✅ Preset "${name}" loaded successfully`);
+        if (preset.textures) {
+          const texPath = getTexturePath(basePath);
 
-        if (this._decrementPreload) {
-          this._decrementPreload();
+          Object.entries(preset.textures).forEach(([uniformName, fileName]) => {
+            const imgUrl = `${texPath}${fileName}`;
+            console.log(`   🖼️ Loading texture: ${fileName}`);
+
+            const p = new Promise((resolve, reject) => {
+              const loader =
+                this.loadImage || p5.prototype.loadImage || window.loadImage;
+              if (loader) {
+                loader.call(this, imgUrl, resolve, reject);
+              } else {
+                reject(new Error("p5 loadImage function not found"));
+              }
+            });
+
+            texturePromises.push(
+              p.then((img) => {
+                loadedTextures[uniformName] = img;
+              })
+            );
+          });
         }
 
-        return preset;
+        return Promise.all(texturePromises).then(() => {
+          this._shaderShapes.presets.set(name, {
+            vertex: preset.vertex || null,
+            fragment: preset.fragment,
+            uniforms: preset.uniforms || {},
+            metadata: preset.metadata || {},
+            cachedTextures: loadedTextures,
+          });
+
+          console.log(`✅ Preset "${name}" loaded.`);
+
+          if (this._decrementPreload) {
+            this._decrementPreload();
+          }
+
+          return preset;
+        });
       });
     })
     .catch((error) => {
       console.error(`❌ Error loading preset "${name}":`, error);
-
-      if (this._decrementPreload) {
-        this._decrementPreload();
-      }
-
+      if (this._decrementPreload) this._decrementPreload();
       throw error;
     });
 }
